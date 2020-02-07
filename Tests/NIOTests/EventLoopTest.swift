@@ -194,6 +194,39 @@ public final class EventLoopTest : XCTestCase {
             XCTAssertTrue(NIODeadline.now() - nanos >= initialDelay)
         }
     }
+    
+    public func testRepeatedTaskOffFuture() {
+        let elg1: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer {
+            XCTAssertNoThrow(try elg1.syncShutdownGracefully())
+        }
+
+        let elg2: EventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer {
+            XCTAssertNoThrow(try elg2.syncShutdownGracefully())
+        }
+
+        let g = DispatchGroup()
+        var callNumber = 0
+        g.enter()
+        let task = elg1.next().scheduleRepeatedAsyncTask(initialDelay: .nanoseconds(0), delay: .nanoseconds(0)) { task in
+            struct Dummy: Error {}
+
+            callNumber += 1
+            switch callNumber {
+            case 1:
+                return elg2.next().makeSucceededFuture(())
+            case 2:
+                g.leave()
+                return elg2.next().makeFailedFuture(Dummy())
+            default:
+                XCTFail("shouldn't be called \(callNumber)")
+                return elg2.next().makeFailedFuture(Dummy())
+            }
+        }
+        task.begin(in: .nanoseconds(0))
+        g.wait()
+    }
 
     public func testScheduleRepeatedTaskToNotRetainRepeatedTask() throws {
         let initialDelay: TimeAmount = .milliseconds(5)
@@ -309,7 +342,7 @@ public final class EventLoopTest : XCTestCase {
         eventLoop.run()
         XCTAssertEqual(5, counter)
     }
-
+    
     public func testEventLoopGroupMakeIterator() throws {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         defer {

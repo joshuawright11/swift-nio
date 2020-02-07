@@ -145,7 +145,13 @@ public final class RepeatedTask {
 
         scheduled.futureResult.whenSuccess { future in
             future.whenComplete { (_: Result<Void, Error>) in
-                self.reschedule0()
+                if self.eventLoop.inEventLoop {
+                    self.reschedule0()
+                } else {
+                    self.eventLoop.execute {
+                        self.reschedule0()
+                    }
+                }
             }
         }
 
